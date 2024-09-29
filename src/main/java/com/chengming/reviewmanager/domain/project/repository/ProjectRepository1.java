@@ -6,25 +6,22 @@ import com.chengming.reviewmanager.domain.project.entity.Project;
 import com.chengming.reviewmanager.domain.project.mapper.ProjectMapper;
 import com.chengming.reviewmanager.infrastructure.exceptions.BusinessException;
 import jakarta.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
-@Slf4j
 @Repository
-public class ProjectRepository {
+public class ProjectRepository1 {
 
+    private static final Logger log = LoggerFactory.getLogger(ProjectRepository1.class);
     @Resource
     private ProjectMapper projectMapper;
-
-    @Resource
-    private ProjectRepository1 projectRepository1;
 
     public boolean insert(Project project) {
         int insert = projectMapper.insert(project);
@@ -53,15 +50,6 @@ public class ProjectRepository {
     public boolean deleteById(Project project) {
         int delete = projectMapper.deleteById(project);
         return delete == 1;
-    }
-
-    @Async
-    public void extracted(List<Project> projects, CountDownLatch latch) {
-        try{
-            projectRepository1.extracted1(projects, latch);
-        }finally {
-            latch.countDown();
-        }
     }
 
     @Transactional(rollbackFor = Exception.class)
