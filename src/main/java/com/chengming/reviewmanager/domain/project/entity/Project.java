@@ -7,7 +7,9 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 @Getter
 @Setter
@@ -21,5 +23,4 @@ public class Project {
     private Integer status;
     private Date createTime;
     private Date updateTime;
-
 }

@@ -12,6 +12,11 @@ import com.chengming.reviewmanager.interfaces.dto.query.QProject;
 import com.chengming.reviewmanager.interfaces.dto.vo.ProjectVO;
 import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.producer.TransactionMQProducer;
+import org.apache.rocketmq.client.producer.TransactionSendResult;
+import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -21,6 +26,7 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 
+import java.io.UnsupportedEncodingException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -33,6 +39,9 @@ public class ProjectService {
     private static final Logger log = LoggerFactory.getLogger(ProjectService.class);
     @Resource
     private ProjectRepository projectRepository;
+
+    @Resource
+    private ReviewService reviewService;
 
     public Page<ProjectVO> list(QProject qProject) {
         Project project = ProjectAssembler.qProject2Project(qProject);
@@ -60,9 +69,11 @@ public class ProjectService {
         boolean delete = projectRepository.deleteById(project);
         RAssert.isTrue(delete, "project delete failed");
     }
+
     @Resource
     private DataSourceTransactionManager transactionManager;
-//    @Transactional(rollbackFor = Exception.class)
+
+    @Transactional(rollbackFor = Exception.class)
     public void batchInsert() {
         List<Project> projectList = Lists.newArrayList();
         for (int i = 0; i < 1000; i++) {
@@ -76,40 +87,67 @@ public class ProjectService {
         TransactionStatus mainTransaction = transactionManager.getTransaction(def);
 
 
-
         ExecutorService executorService = Executors.newFixedThreadPool(10);
         List<List<Project>> partition = Lists.partition(projectList, 100);
         CountDownLatch latch = new CountDownLatch(partition.size());
         AtomicBoolean flag = new AtomicBoolean(true);
-        for (List<Project> projects : partition) {
-            executorService.execute(()->{
-                extracted(projects, latch, transactionStatus);
-            });
-        }
-        Project project = new Project();
-        project.setProjectName("主线程插入的");
-        project.setProjectNo(UUID.randomUUID().toString());
-        projectRepository.insert(project);
-        transactionManager.commit(transactionStatus);
+//        for (List<Project> projects : partition) {
+//            executorService.execute(()->{
+//                extracted(projects, latch, transactionStatus);
+//            });
+//        }
+//        Project project = new Project();
+//        project.setProjectName("主线程插入的");
+//        project.setProjectNo(UUID.randomUUID().toString());
+//        projectRepository.insert(project);
+//        transactionManager.commit(transactionStatus);
     }
 
     public void extracted(List<Project> projects, CountDownLatch latch) {
         TransactionStatus subTransaction = null;
-        try{
+        try {
             // 子线程事务定义 (每个子线程独立事务)
             DefaultTransactionDefinition subTxDef = new DefaultTransactionDefinition();
             subTxDef.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
             subTransaction = transactionManager.getTransaction(subTxDef);
             for (Project project : projects) {
-                project.setProjectName("子线程id："+  Thread.currentThread().getId());
+                project.setProjectName("子线程id：" + Thread.currentThread().getId());
                 projectRepository.insert(project);
                 throw new BusinessException("子线程异常");
             }
-        }catch (Exception e){
+        } catch (Exception e) {
 
-        }
-        finally {
+        } finally {
             latch.countDown();
+        }
+    }
+
+    @Resource
+    private TransactionMQProducer transactionMQProducer;
+
+    @Transactional(rollbackFor = Exception.class)
+    public void multiTransException() {
+        Project project = new Project();
+        project.setProjectName("multiTransException");
+        projectRepository.insert(project);
+        try {
+            reviewService.insertReview();
+        } catch (Exception e) {
+            log.info("子事务异常exception, ", e);
+        }
+        log.info("是否能走到");
+        String[] tags = new String[] {"TagA", "TagB", "TagC", "TagD", "TagE"};
+        for (int i = 0; i < 10; i++) {
+            try {
+                Message msg =
+                        new Message("TopicTest1234", tags[i % tags.length], "KEY" + i,
+                                ("Hello RocketMQ " + i).getBytes(RemotingHelper.DEFAULT_CHARSET));
+                TransactionSendResult sendResult = transactionMQProducer.sendMessageInTransaction(msg, null);
+
+                System.out.println("sendResult:"+sendResult.getSendStatus()+", localStatus:"+ sendResult.getLocalTransactionState());
+            } catch (MQClientException | UnsupportedEncodingException e) {
+                e.printStackTrace();
+            }
         }
     }
 }

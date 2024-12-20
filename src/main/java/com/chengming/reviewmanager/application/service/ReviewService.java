@@ -20,6 +20,10 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Service
 public class ReviewService {
     @Resource
@@ -61,6 +65,15 @@ public class ReviewService {
         CodeReviewVO codeReviewVO = new CodeReviewVO();
         codeReviewDetailVO.setCodeReview(codeReviewVO);
         return codeReviewDetailVO;
+
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void insertReview() {
+        Review review = new Review();
+        review.setTitle("insertReview");
+        reviewRepository.insert(review);
+        System.out.println(1 / 0);
 
     }
 }
